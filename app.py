@@ -51,7 +51,8 @@ def obtener_festivos_colombia(ano):
     domingo_pascua = datetime(ano, mes_pascua, dia_pascua).date()
     
     festivos.add(domingo_pascua - timedelta(days=3)) # Jueves Santo
-    festivos.add(domingo_pascua - timedelta(days=2)) # Viernes Santo
+    domingo_pascua - timedelta(days=2) # Viernes Santo
+    festivos.add(domingo_pascua - timedelta(days=2))
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=43))) # Ascensión
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=64))) # Corpus Christi
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=71))) # Sagrado Corazón
@@ -61,8 +62,8 @@ def obtener_festivos_colombia(ano):
 st.title("⏱️ Calculadora y Liquidador Automático de Turnos y Recargos")
 st.markdown("""
 Herramienta optimizada para **turnos rotativos (8h y 12h)** bajo la legislación laboral colombiana (jornada de **42 horas semanales**):
-* **Día Automático:** El sistema detecta si es Domingo o Festivo por la fecha.
-* **Franja Nocturna:** Recargo nocturno de **7:00 p.m. a 6:00 a.m.** del día siguiente.
+- **Día Automático:** El sistema detecta si es Domingo o Festivo de forma 100% automática por medio de la fecha.
+- **Franja Nocturna:** Recargo nocturno computado rigurosamente de **7:00 p.m. (19:00) a 6:00 a.m.** del día siguiente.
 """)
 
 with st.sidebar:
@@ -171,20 +172,18 @@ with tab2:
                 tipo_d = row["Tipo_Dia"]
                 es_festivo_dom = (tipo_d in ["Domingo", "Festivo"])
                 
-                # Desglose base: 8 horas ordinarias máximas por día según turno habitual
+                # Jornada ordinaria vs extras (Jornada máxima diaria de referencia: 8h)
                 hr_ord = min(h_tot, 8.0)
                 hr_ext = max(0.0, h_tot - 8.0)
                 
-                # Cálculo de recargo nocturno considerando la franja 19:00 a 06:00
                 h_ini_str = row["Hora_Inicio"]
-                h_fin_str = row["Hora_Fin"]
                 
-                # Asignación de horas nocturnas según turnos estándar
-                # 06:00-14:00 -> 0h nocturnas
-                # 14:00-22:00 -> 3h nocturnas (19:00 a 22:00)
-                # 22:00-06:00 -> 8h nocturnas
-                # 07:00-19:00 -> 0h nocturnas
-                # 19:00-07:00 -> 11h nocturnas (19:00 a 06:00)
+                # Cálculo exacto de recargo nocturno según turnos rotativos (Franja 19:00 a 06:00)
+                # 06:00 - 14:00 -> 0 horas nocturnas
+                # 14:00 - 22:00 -> 3 horas nocturnas (19:00 a 22:00)
+                # 22:00 - 06:00 -> 8 horas nocturnas
+                # 07:00 - 19:00 -> 0 horas nocturnas
+                # 19:00 - 07:00 -> 11 horas nocturnas (19:00 a 06:00)
                 
                 rec_noc = 0.0
                 if h_ini_str == "14:00":
@@ -192,7 +191,7 @@ with tab2:
                 elif h_ini_str == "22:00":
                     rec_noc = min(h_tot, 8.0)
                 elif h_ini_str == "19:00":
-                    rec_noc = 11.0 # 19:00 a 06:00
+                    rec_noc = 11.0
                 
                 # Valores económicos
                 pago_ord = hr_ord * val_hr
@@ -201,7 +200,7 @@ with tab2:
                 
                 subtotal = pago_ord + pago_rec_noc + pago_ext
                 if es_festivo_dom and hr_ord > 0:
-                    subtotal += hr_ord * val_hr * 0.75 # Recargo dominical/festivo
+                    subtotal += hr_ord * val_hr * 0.75 # Recargo adicional dominical/festivo
                     
                 detalles.append({
                     "Fecha": row["Fecha"],
