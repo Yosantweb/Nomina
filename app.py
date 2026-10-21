@@ -55,7 +55,7 @@ def obtener_festivos_colombia(ano):
     return festivos
 
 st.title("⏱️ Liquidador y Memoria de Nómina - Telemando")
-st.markdown("Registra tus turnos de forma manual o sube una plantilla de Excel. El sistema calcula los recargos y filtra por mes específico.")
+st.markdown("Registra tus turnos por entrada/salida (turnos corridos) o sube una plantilla Excel. El sistema calcula recargos y filtra por mes.")
 
 with st.sidebar:
     st.header("⚙️ Parámetros Salariales")
@@ -70,11 +70,9 @@ tab1, tab2, tab3 = st.tabs(["📝 Registro y Carga Excel", "🧮 Motor de Liquid
 with tab1:
     st.subheader("Opciones de Registro de Turnos")
     
-    # Subir plantilla Excel
     with st.expander("📁 Cargar Plantilla Masiva (Excel / CSV)"):
         st.markdown("Tu archivo debe contener las columnas: **Entrada** y **Salida** (Formato: `YYYY-MM-DD HH:MM:SS`).")
         
-        # Botón para descargar plantilla de ejemplo en Excel/CSV
         df_plantilla = pd.DataFrame({
             "Entrada": ["2026-10-01 06:00:00", "2026-10-02 14:00:00"],
             "Salida": ["2026-10-01 14:00:00", "2026-10-02 22:00:00"]
@@ -94,7 +92,6 @@ with tab1:
                 else:
                     df_subido = pd.read_excel(archivo_subido)
                 
-                # Procesar archivo subido
                 turnos_cargados = []
                 for _, row in df_subido.iterrows():
                     dt_ini = pd.to_datetime(row["Entrada"])
@@ -119,10 +116,10 @@ with tab1:
                     st.session_state['mis_turnos'] = df_nuevo
                 st.success("¡Turnos cargados exitosamente desde el archivo!")
             except Exception as e:
-                st.error(f"Error al leer el archivo. Verifica que las columnas se llamen 'Entrada' y 'Salida'. Detalle: {e}")
+                st.error(f"Error al leer el archivo. Verifica las columnas 'Entrada' y 'Salida'. Detalle: {e}")
 
     st.markdown("---")
-    st.subheader("O registro manual directo (Turno Corrido)")
+    st.subheader("Registro Manual Directo (Turno Corrido)")
     with st.form("form_directo_limpio", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -217,13 +214,11 @@ with tab3:
     if 'resultado_final' in st.session_state and not st.session_state['resultado_final'].empty:
         df_f = st.session_state['resultado_final']
         
-        # Extraer meses disponibles basados en las fechas de entrada
         df_f['Mes_Anno'] = pd.to_datetime(df_f['Entrada']).dt.to_period('M').astype(str)
         meses_disponibles = sorted(df_f['Mes_Anno'].unique())
         
         mes_seleccionado = st.selectbox("Selecciona el Mes de Nómina a Consultar", meses_disponibles)
         
-        # Filtrar por el mes seleccionado
         df_filtrado = df_f[df_f['Mes_Anno'] == mes_seleccionado]
         
         st.write(f"### Resumen de Nómina para el periodo: {mes_seleccionado}")
