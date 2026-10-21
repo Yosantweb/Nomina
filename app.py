@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, time, timedelta
 
 st.set_page_config(
-    page_title="Calculadora de Turnos y Recargos - Telemando",
+    page_title="Calculadora de Turnos - Telemando",
     page_icon="⏱️",
     layout="wide"
 )
@@ -58,12 +58,12 @@ def obtener_festivos_colombia(ano):
     
     return festivos
 
-st.title("⏱️ Calculadora y Liquidador Automático por Rango de Fecha y Hora")
+st.title("⏱️ Calculadora de Turnos - Telemando (Turnos Corridos)")
 st.markdown("""
-Herramienta libre y flexible para turnos rotativos (8h, 12h o personalizados) bajo la legislación colombiana (jornada de **42 horas semanales**):
-* **Cálculo por Fecha y Hora:** Ingresa fecha/hora de entrada y fecha/hora de salida. El sistema calcula las horas exactas.
-* **Días Especiales:** Detecta automáticamente si el turno cae en Domingo o Festivo.
-* **Franja Nocturna:** Recargo nocturno computado rigurosamente de **7:00 p.m. (19:00) a 6:00 a.m.** del día siguiente.
+Herramienta optimizada para el registro limpio y directo de turnos continuos (corridos) bajo la legislación laboral colombiana:
+* **Entrada y Salida:** Solo ingresa la fecha y hora de inicio y fin. El sistema calcula automáticamente la duración total.
+* **Festivos y Domingos Automáticos:** Detección inteligente por fecha.
+* **Franja Nocturna:** Recargo nocturno calculado de **7:00 p.m. (19:00) a 6:00 a.m.**
 """)
 
 with st.sidebar:
@@ -75,12 +75,12 @@ with st.sidebar:
     
     st.info(f"💰 **Valor Hora Ordinaria:** $ {valor_hora_ordinaria:,.2f} COP")
 
-tab1, tab2, tab3 = st.tabs(["📝 Registro por Entrada/Salida", "🧮 Motor de Cálculo", "📊 Reporte Consolidado"])
+tab1, tab2, tab3 = st.tabs(["📝 Registro de Turnos", "🧮 Motor de Cálculo", "📊 Reporte Consolidado"])
 
 with tab1:
-    st.subheader("Registra tu turno indicando Fecha y Hora de Entrada y Salida")
+    st.subheader("Ingresa los datos de tu turno")
     
-    with st.form("form_turno_flexible", clear_on_submit=True):
+    with st.form("form_limpio", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             fecha_inicio = st.date_input("Fecha de Entrada", value=datetime.today())
@@ -88,8 +88,6 @@ with tab1:
         with col2:
             fecha_fin = st.date_input("Fecha de Salida", value=datetime.today())
             h_fin = st.time_input("Hora de Salida", value=time(14, 0))
-            
-        descanso = st.selectbox("Descanso / Almuerzo", ["Turno Corrido (Sin descuento)", "Descontar 1 hora de descanso"])
             
         btn_agregar = st.form_submit_button("➕ Agregar Turno al Registro")
         
@@ -100,11 +98,10 @@ with tab1:
             if dt_fin <= dt_ini:
                 st.error("Error: La fecha y hora de salida deben ser posteriores a la entrada.")
             else:
+                # Duración exacta en horas (turnos corridos, sin descuentos)
                 duracion = (dt_fin - dt_ini).seconds / 3600.0 + ((dt_fin - dt_ini).days * 24)
-                if descanso == "Descontar 1 hora de descanso":
-                    duracion = max(0.0, duracion - 1.0)
                 
-                # Detectar tipo de día basado en la fecha de entrada
+                # Detectar tipo de día automáticamente
                 f_date = fecha_inicio
                 es_domingo = (f_date.weekday() == 6)
                 festivos_ano = obtener_festivos_colombia(f_date.year)
@@ -124,50 +121,47 @@ with tab1:
                     "Total_Horas": [round(duracion, 2)]
                 })
                 
-                if 'df_turnos_flex' in st.session_state:
-                    st.session_state['df_turnos_flex'] = pd.concat([st.session_state['df_turnos_flex'], nuevo_item], ignore_index=True)
+                if 'df_turnos_limpio' in st.session_state:
+                    st.session_state['df_turnos_limpio'] = pd.concat([st.session_state['df_turnos_limpio'], nuevo_item], ignore_index=True)
                 else:
-                    st.session_state['df_turnos_flex'] = nuevo_item
-                st.success(f"¡Turno agregado con éxito! Duración: **{round(duracion, 2)} horas** ({tipo_dia_str})")
+                    st.session_state['df_turnos_limpio'] = nuevo_item
+                st.success(f"¡Turno agregado con éxito! Duración: **{round(duracion, 2)} h** ({tipo_dia_str})")
 
-    if 'df_turnos_flex' in st.session_state and not st.session_state['df_turnos_flex'].empty:
+    if 'df_turnos_limpio' in st.session_state and not st.session_state['df_turnos_limpio'].empty:
         st.write("### Listado de Turnos Registrados:")
-        st.dataframe(st.session_state['df_turnos_flex'], use_container_width=True)
+        st.dataframe(st.session_state['df_turnos_limpio'], use_container_width=True)
         
         if st.button("🗑️ Borrar Todos los Turnos"):
-            del st.session_state['df_turnos_flex']
+            del st.session_state['df_turnos_limpio']
             st.rerun()
 
 with tab2:
-    st.subheader("🧮 Cálculo de Horas y Recargos (Franja Nocturna 19:00 a 06:00)")
-    if 'df_turnos_flex' in st.session_state and not st.session_state['df_turnos_flex'].empty:
-        if st.button("🚀 Ejecutar Liquidación Detallada", type="primary"):
+    st.subheader("🧮 Cálculo de Horas, Extras y Recargos Nocturnos")
+    if 'df_turnos_limpio' in st.session_state and not st.session_state['df_turnos_limpio'].empty:
+        if st.button("🚀 Ejecutar Liquidación", type="primary"):
             val_hr = valor_hora_ordinaria
             detalles = []
             
-            for idx, row in st.session_state['df_turnos_flex'].iterrows():
+            for idx, row in st.session_state['df_turnos_limpio'].iterrows():
                 h_tot = row["Total_Horas"]
                 tipo_d = row["Tipo_Dia"]
                 es_festivo_dom = (tipo_d in ["Domingo", "Festivo"])
                 
-                # Jornada ordinaria vs extras (referencia 8h diarias por turno estándar)
+                # Jornada ordinaria máxima diaria (8 horas de base)
                 hr_ord = min(h_tot, 8.0)
                 hr_ext = max(0.0, h_tot - 8.0)
                 
-                # Estimación inteligente de recargo nocturno basada en la duración y hora de entrada
+                # Identificación de horas nocturnas (Franja 19:00 a 06:00)
                 dt_ini_parsed = datetime.strptime(row["F_Inicio"], "%Y-%m-%d %H:%M:%S")
                 h_ini_time = dt_ini_parsed.time()
                 
                 rec_noc = 0.0
-                # Si entra a las 14:00 (turno tarde 8h) -> 3h nocturnas (19:00 a 22:00)
-                # Si entra a las 22:00 (turno noche 8h) -> 8h nocturnas
-                # Si entra a las 19:00 (turno noche 12h) -> 11h nocturnas (19:00 a 06:00)
                 if h_ini_time >= time(14, 0) and h_ini_time < time(18, 0):
-                    rec_noc = min(3.0, h_tot)
+                    rec_noc = min(3.0, h_tot) # Turno tarde (ej. 14:00 a 22:00 -> 3h nocturnas de 19:00 a 22:00)
                 elif h_ini_time >= time(21, 0) or h_ini_time < time(6, 0):
-                    rec_noc = min(h_tot, 8.0)
+                    rec_noc = min(h_tot, 8.0) # Turno noche 8h
                 elif h_ini_time >= time(18, 0) and h_ini_time <= time(20, 0):
-                    rec_noc = min(11.0, h_tot - 1.0) if h_tot > 11 else min(11.0, h_tot)
+                    rec_noc = min(11.0, h_tot) # Turno noche 12h (19:00 a 07:00 -> 11h nocturnas)
                 
                 # Valores económicos
                 pago_ord = hr_ord * val_hr
@@ -190,7 +184,7 @@ with tab2:
                 })
                 
             df_res = pd.DataFrame(detalles)
-            st.session_state['df_res_flex'] = df_res
+            st.session_state['df_res_limpio'] = df_res
             st.success("¡Liquidación procesada con éxito!")
             st.dataframe(df_res, use_container_width=True)
     else:
@@ -198,8 +192,8 @@ with tab2:
 
 with tab3:
     st.subheader("📊 Consolidado Mensual")
-    if 'df_res_flex' in st.session_state and not st.session_state['df_res_flex'].empty:
-        df_final = st.session_state['df_res_flex']
+    if 'df_res_limpio' in st.session_state and not st.session_state['df_res_limpio'].empty:
+        df_final = st.session_state['df_res_limpio']
         total_pagar = df_final["Subtotal Est. (COP)"].sum()
         total_hrs = df_final["Horas Turno"].sum()
         
