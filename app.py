@@ -3,12 +3,11 @@ import pandas as pd
 from datetime import datetime, time, timedelta
 
 st.set_page_config(
-    page_title="Calculadora de Turnos - Telemando",
+    page_title="Liquidador de Turnos - Telemando",
     page_icon="⏱️",
     layout="wide"
 )
 
-# Algoritmo de festivos oficiales de Colombia
 def obtener_festivos_colombia(ano):
     festivos = set()
     festivos.add(datetime(ano, 1, 1).date())   # Año Nuevo
@@ -56,7 +55,7 @@ def obtener_festivos_colombia(ano):
     return festivos
 
 st.title("⏱️ Liquidador de Turnos Corridos - Telemando")
-st.markdown("Registro limpio y directo: **Fecha/Hora Entrada** y **Fecha/Hora Salida**.")
+st.markdown("Herramienta limpia y directa: solo ingresa **Fecha/Hora de Entrada** y **Fecha/Hora de Salida** (turnos 100% corridos).")
 
 with st.sidebar:
     st.header("⚙️ Parámetros Salariales")
@@ -69,15 +68,15 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📝 Registrar Turno", "🧮 Calcular Recargos", "📊 Consolidado"])
 
 with tab1:
-    st.subheader("Ingresa los datos de tu turno corrido")
-    with st.form("form_directo", clear_on_submit=True):
+    st.subheader("Ingresa los datos de tu turno")
+    with st.form("form_directo_limpio", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            f_in = st.date_input("Fecha de Entrada", value=datetime.today())
-            h_in = st.time_input("Hora de Entrada", value=time(6, 0))
+            f_in = st.date_input("Fecha Entrada", value=datetime.today())
+            h_in = st.time_input("Hora Entrada", value=time(6, 0))
         with col2:
-            f_out = st.date_input("Fecha de Salida", value=datetime.today())
-            h_out = st.time_input("Hora de Salida", value=time(14, 0))
+            f_out = st.date_input("Fecha Salida", value=datetime.today())
+            h_out = st.time_input("Hora Salida", value=time(14, 0))
             
         enviar = st.form_submit_button("➕ Agregar Turno")
         
@@ -86,11 +85,10 @@ with tab1:
             dt_fin = datetime.combine(f_out, h_out)
             
             if dt_fin <= dt_ini:
-                st.error("La fecha/hora de salida debe ser posterior a la entrada.")
+                st.error("La fecha y hora de salida deben ser posteriores a la entrada.")
             else:
                 duracion = (dt_fin - dt_ini).seconds / 3600.0 + ((dt_fin - dt_ini).days * 24)
                 
-                # Detección automática del día
                 es_domingo = (f_in.weekday() == 6)
                 es_festivo = (f_in in obtener_festivos_colombia(f_in.year))
                 tipo_dia = "Domingo" if es_domingo else ("Festivo" if es_festivo else "Día Hábil")
