@@ -3,16 +3,14 @@ import pandas as pd
 from datetime import datetime, time, timedelta
 
 st.set_page_config(
-    page_title="Calculadora de Recargos y Turnos - Telemando",
+    page_title="Calculadora de Turnos y Recargos - Telemando",
     page_icon="⏱️",
     layout="wide"
 )
 
-# Función para calcular los días festivos oficiales de Colombia para un año determinado
+# Función para calcular los días festivos oficiales de Colombia
 def obtener_festivos_colombia(ano):
     festivos = set()
-    
-    # Festivos fijos
     festivos.add(datetime(ano, 1, 1).date())   # Año Nuevo
     festivos.add(datetime(ano, 5, 1).date())   # Día del Trabajo
     festivos.add(datetime(ano, 7, 20).date())  # Independencia
@@ -20,7 +18,6 @@ def obtener_festivos_colombia(ano):
     festivos.add(datetime(ano, 12, 8).date())  # Inmaculada Concepción
     festivos.add(datetime(ano, 12, 25).date()) # Navidad
     
-    # Función auxiliar para el festivo de la ley "Emiliani" (trasladar al lunes siguiente si cae entre semana)
     def siguiente_lunes(fec):
         dias_hasta_lunes = (0 - fec.weekday()) % 7
         if dias_hasta_lunes == 0:
@@ -35,7 +32,7 @@ def obtener_festivos_colombia(ano):
     festivos.add(siguiente_lunes(datetime(ano, 11, 1).date()))  # Todos los Santos
     festivos.add(siguiente_lunes(datetime(ano, 11, 11).date())) # Independencia de Cartagena
     
-    # Cálculo de Pascua (Algoritmo de Meeus/Jones/Butcher)
+    # Pascua
     a = ano % 19
     b = ano // 100
     c = ano % 100
@@ -53,10 +50,9 @@ def obtener_festivos_colombia(ano):
     
     domingo_pascua = datetime(ano, mes_pascua, dia_pascua).date()
     
-    # Festivos basados en Pascua
     festivos.add(domingo_pascua - timedelta(days=3)) # Jueves Santo
     festivos.add(domingo_pascua - timedelta(days=2)) # Viernes Santo
-    festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=43))) # Ascensión del Señor
+    festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=43))) # Ascensión
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=64))) # Corpus Christi
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=71))) # Sagrado Corazón
     
@@ -64,17 +60,15 @@ def obtener_festivos_colombia(ano):
 
 st.title("⏱️ Calculadora y Liquidador Automático de Turnos y Recargos")
 st.markdown("""
-Herramienta adaptada a la **legislación laboral colombiana vigente**:
-* **Jornada Laboral:** Basada en la normativa actual de **42 horas semanales**.
-* **Franja Nocturna:** El recargo nocturno ordinario aplica de **7:00 p.m. a 6:00 a.m.** del día siguiente (según la actualización de la reforma laboral).
-* **Festivos y Domingos:** El sistema **detecta automáticamente** si la fecha seleccionada corresponde a un domingo o festivo oficial de Colombia.
+Herramienta optimizada para **turnos rotativos (8h y 12h)** bajo la legislación laboral colombiana (jornada de **42 horas semanales**):
+* **Día Automático:** El sistema detecta si es Domingo o Festivo por la fecha.
+* **Franja Nocturna:** Recargo nocturno de **7:00 p.m. a 6:00 a.m.** del día siguiente.
 """)
 
 with st.sidebar:
     st.header("⚙️ Parámetros Salariales")
     salario_base = st.number_input("Salario Mensual Básico (COP)", value=2500000, step=50000)
     aux_transporte = st.number_input("Auxilio de Transporte (COP)", value=162000, step=10000)
-    
     divisor_horas = st.selectbox("Divisor Mensual de Horas", [182, 180, 200, 240], index=0)
     valor_hora_ordinaria = salario_base / divisor_horas
     
@@ -83,23 +77,45 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📝 Registro de Turnos", "🧮 Motor de Cálculo", "📊 Reporte Consolidado"])
 
 with tab1:
-    st.subheader("Ingresa tus turnos trabajados del mes")
-    st.markdown("*(El sistema determina automáticamente si el día es Domingo o Festivo)*")
+    st.subheader("Selecciona tu turno de trabajo")
     
     with st.form("form_turno", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             fecha_turno = st.date_input("Fecha del Turno", value=datetime.today())
+            tipo_turno_sel = st.selectbox(
+                "Selección de Turno", 
+                [
+                    "Turno 8h: Mañana (06:00 - 14:00)",
+                    "Turno 8h: Tarde (14:00 - 22:00)",
+                    "Turno 8h: Noche (22:00 - 06:00)",
+                    "Turno 12h: Diurno (07:00 - 19:00)",
+                    "Turno 12h: Nocturno (19:00 - 07:00)",
+                    "Personalizado (Definir Horas)"
+                ]
+            )
         with col2:
-            h_inicio = st.time_input("Hora de Inicio", value=time(6, 0))
-            h_fin = st.time_input("Hora de Fin", value=time(14, 0))
-        with col3:
+            if tipo_turno_sel == "Personalizado (Definir Horas)":
+                h_inicio = st.time_input("Hora de Inicio", value=time(6, 0))
+                h_fin = st.time_input("Hora de Fin", value=time(14, 0))
+            else:
+                if "06:00 - 14:00" in tipo_turno_sel:
+                    h_inicio, h_fin = time(6, 0), time(14, 0)
+                elif "14:00 - 22:00" in tipo_turno_sel:
+                    h_inicio, h_fin = time(14, 0), time(22, 0)
+                elif "22:00 - 06:00" in tipo_turno_sel:
+                    h_inicio, h_fin = time(22, 0), time(6, 0)
+                elif "07:00 - 19:00" in tipo_turno_sel:
+                    h_inicio, h_fin = time(7, 0), time(19, 0)
+                else:
+                    h_inicio, h_fin = time(19, 0), time(7, 0)
+                st.write(f"**Horario asignado:** {h_inicio.strftime('%H:%M')} a {h_fin.strftime('%H:%M')}")
+            
             descanso = st.selectbox("Descanso / Almuerzo", ["Turno Corrido (Sin descuento)", "Descontar 1 hora de descanso"])
             
-        btn_agregar = st.form_submit_button("➕ Agregar Turno")
+        btn_agregar = st.form_submit_button("➕ Agregar Turno al Mes")
         
         if btn_agregar:
-            # Determinación automática del tipo de día
             f_date = fecha_turno
             es_domingo = (f_date.weekday() == 6)
             festivos_ano = obtener_festivos_colombia(f_date.year)
@@ -133,10 +149,10 @@ with tab1:
                 st.session_state['df_turnos_usuario'] = pd.concat([st.session_state['df_turnos_usuario'], nuevo_item], ignore_index=True)
             else:
                 st.session_state['df_turnos_usuario'] = nuevo_item
-            st.success(f"¡Turno agregado correctamente! Detectado como: **{tipo_dia_str}**")
+            st.success(f"¡Turno agregado! Detectado automáticamente como: **{tipo_dia_str}**")
 
     if 'df_turnos_usuario' in st.session_state and not st.session_state['df_turnos_usuario'].empty:
-        st.write("### Turnos Registrados:")
+        st.write("### Listado de Turnos Registrados:")
         st.dataframe(st.session_state['df_turnos_usuario'], use_container_width=True)
         
         if st.button("🗑️ Borrar Todos los Turnos"):
@@ -144,9 +160,9 @@ with tab1:
             st.rerun()
 
 with tab2:
-    st.subheader("🧮 Cálculo de Horas y Recargos (Franja Nocturna 7:00 p.m. a 6:00 a.m.)")
+    st.subheader("🧮 Cálculo de Horas y Recargos (Franja Nocturna 19:00 a 06:00)")
     if 'df_turnos_usuario' in st.session_state and not st.session_state['df_turnos_usuario'].empty:
-        if st.button("🚀 Ejecutar Liquidación", type="primary"):
+        if st.button("🚀 Ejecutar Liquidación Detallada", type="primary"):
             val_hr = valor_hora_ordinaria
             detalles = []
             
@@ -155,30 +171,37 @@ with tab2:
                 tipo_d = row["Tipo_Dia"]
                 es_festivo_dom = (tipo_d in ["Domingo", "Festivo"])
                 
-                # Desglose base operativo
+                # Desglose base: 8 horas ordinarias máximas por día según turno habitual
                 hr_ord = min(h_tot, 8.0)
                 hr_ext = max(0.0, h_tot - 8.0)
                 
-                # Cálculo preciso o estimación de recargo nocturno bajo la franja 7:00 p.m. a 6:00 a.m.
-                # Evaluamos si el turno abarca horas dentro del rango 19:00 a 06:00
-                h_ini_obj = datetime.strptime(row["Hora_Inicio"], "%H:%M").time()
+                # Cálculo de recargo nocturno considerando la franja 19:00 a 06:00
+                h_ini_str = row["Hora_Inicio"]
+                h_fin_str = row["Hora_Fin"]
                 
-                # Turno tarde/noche (ej. de 14:00 a 22:00 -> de 19:00 a 22:00 son 3 horas nocturnas)
-                # Turno noche (ej. de 22:00 a 06:00 -> 8 horas nocturnas)
+                # Asignación de horas nocturnas según turnos estándar
+                # 06:00-14:00 -> 0h nocturnas
+                # 14:00-22:00 -> 3h nocturnas (19:00 a 22:00)
+                # 22:00-06:00 -> 8h nocturnas
+                # 07:00-19:00 -> 0h nocturnas
+                # 19:00-07:00 -> 11h nocturnas (19:00 a 06:00)
+                
                 rec_noc = 0.0
-                if h_ini_obj >= time(14, 0) and h_ini_obj < time(22, 0):
-                    rec_noc = 3.0 # Típico turno de tarde con 3h nocturnas (19:00 a 22:00)
-                elif h_ini_obj >= time(22, 0) or h_ini_obj < time(6, 0):
-                    rec_noc = min(h_tot, 8.0) # Turno nocturno completo
+                if h_ini_str == "14:00":
+                    rec_noc = 3.0
+                elif h_ini_str == "22:00":
+                    rec_noc = min(h_tot, 8.0)
+                elif h_ini_str == "19:00":
+                    rec_noc = 11.0 # 19:00 a 06:00
                 
-                # Valores económicos con la nueva franja y recargos de ley
+                # Valores económicos
                 pago_ord = hr_ord * val_hr
                 pago_rec_noc = rec_noc * val_hr * 0.35
                 pago_ext = hr_ext * val_hr * (1.75 if es_festivo_dom else 1.25)
                 
                 subtotal = pago_ord + pago_rec_noc + pago_ext
                 if es_festivo_dom and hr_ord > 0:
-                    subtotal += hr_ord * val_hr * 0.75 # Recargo adicional dominical/festivo
+                    subtotal += hr_ord * val_hr * 0.75 # Recargo dominical/festivo
                     
                 detalles.append({
                     "Fecha": row["Fecha"],
@@ -195,7 +218,7 @@ with tab2:
             st.success("¡Liquidación procesada con éxito!")
             st.dataframe(df_res, use_container_width=True)
     else:
-        st.info("Agrega turnos en la primera pestaña para poder calcular.")
+        st.info("Registra turnos en la primera pestaña para poder calcular.")
 
 with tab3:
     st.subheader("📊 Consolidado Mensual")
