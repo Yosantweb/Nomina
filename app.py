@@ -54,11 +54,11 @@ def obtener_festivos_colombia(ano):
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=71)))
     return festivos
 
-st.title("⏱️ Liquidador y Memoria de Nómina - Telemando (Aguas de Cartagena)")
+st.title("⏱️ Liquidador y Memoria de Nómina - Telemando (Auditoría Hora a Hora)")
 st.markdown("""
-Herramienta con **Cálculo Semanal (Límite 42 horas)**:
+Herramienta con **Simulación Hora a Hora y Límite Semanal de 42 Horas**:
 * **Carga de Plantilla Excel:** Lee automáticamente tu reporte mensual (`Fecha Entrada`, `Hora`, `Fecha Salida`, `Hora.1`) reemplazando el historial.
-* **Motor de Horas Extras Semanales:** Las horas que superen las **42 horas semanales** (a partir de la hora 43) se catalogan como extras según el día y la franja horaria.
+* **Motor de Desglose Exacto:** Evalúa cada hora del turno en su franja precisa (Nocturna 19:00 a 06:00, Dominical/Festiva) y aplica el límite semanal para HED, HEN, HEDF, HENF, RN, RNF y HDF.
 """)
 
 with st.sidebar:
@@ -69,7 +69,7 @@ with st.sidebar:
     valor_hora_ordinaria = salario_base / divisor_horas
     st.info(f"💰 **Valor Hora Ordinaria:** $ {valor_hora_ordinaria:,.2f} COP")
 
-tab1, tab2, tab3 = st.tabs(["📝 Carga de Reporte Excel", "🧮 Motor de Liquidación Semanal", "📊 Consolidado y Memoria Mensual"])
+tab1, tab2, tab3 = st.tabs(["📝 Carga de Reporte Excel", "🧮 Motor de Liquidación Hora a Hora", "📊 Consolidado y Memoria Mensual"])
 
 with tab1:
     st.subheader("1️⃣ Carga de Plantilla de Turnos (Excel / CSV)")
@@ -197,86 +197,107 @@ with tab1:
             st.rerun()
 
 with tab2:
-    st.subheader("🧮 Motor de Liquidación con Acumulado Semanal (42h)")
+    st.subheader("🧮 Motor de Liquidación Hora a Hora (Límite Semanal 42h)")
     if 'mis_turnos' in st.session_state and not st.session_state['mis_turnos'].empty:
-        if st.button("🚀 Procesar Liquidación Semanal", type="primary"):
+        if st.button("🚀 Procesar Liquidación Hora a Hora", type="primary"):
             val_hr = valor_hora_ordinaria
             df_t = st.session_state['mis_turnos'].copy()
             df_t['dt_ini'] = pd.to_datetime(df_t['Entrada'])
             df_t['dt_fin'] = pd.to_datetime(df_t['Salida'])
-            df_t['Semana'] = df_t['dt_ini'].dt.isocalendar().week
             df_t = df_t.sort_values(by='dt_ini')
             
+            festivos_cache = {}
+            def es_festivo_o_domingo(dt):
+                d = dt.date()
+                if d not in festivos_cache:
+                    ano = d.year
+                    festivos_cache[ano] = obtener_festivos_colombia(ano)
+                return (d.weekday() == 6) or (d in festivos_cache[d.year])
+
+            def es_nocturna(dt):
+                t = dt.time()
+                return t >= time(19, 0) or t < time(6, 0)
+
             detalles = []
             acumulador_semanal = {}
             
             for _, r in df_t.iterrows():
-                dt_ini = r['dt_ini']
+                dt_current = r['dt_ini']
                 dt_fin = r['dt_fin']
                 h_tot = r['Horas']
-                es_fd = r['Tipo_Dia'] == "Domingo/Festivo"
-                sem = r['Semana']
                 
-                if sem not in acumulador_semanal:
-                    acumulador_semanal[sem] = 0.0
+                turn_hed, turn_hen, turn_hedf, turn_henf = 0.0, 0.0, 0.0, 0.0
+                turn_rn, turn_rnf, turn_hdf = 0.0, 0.0, 0.0
+                turn_ord_diurna = 0.0
                 
-                horas_previas = acumulador_semanal[sem]
-                horas_disponibles_ordinarias = max(0.0, 42.0 - horas_previas)
-                
-                hr_ord_sem = min(h_tot, horas_disponibles_ordinarias)
-                hr_ext_sem = max(0.0, h_tot - hr_ord_sem)
-                
-                acumulador_semanal[sem] += h_tot
-                
-                h_ini_t = dt_ini.time()
-                hed, hen, hedf, henf, rn, rnf, hdf_val = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-                
-                if not es_fd:
-                    if hr_ord_sem > 0:
-                        if h_ini_t >= time(22, 0) or h_ini_t < time(6, 0):
-                            rn = hr_ord_sem
-                        elif h_ini_t >= time(14, 0) and h_ini_t < time(22, 0):
-                            rn = min(3.0, hr_ord_sem)
-                    if hr_ext_sem > 0:
-                        if h_ini_t >= time(22, 0) or h_ini_t < time(6, 0):
-                            hen = hr_ext_sem
+                while dt_current < dt_fin:
+                    next_dt = min(dt_current + timedelta(hours=1), dt_fin)
+                    segment_duration = (next_dt - dt_current).total_seconds() / 3600.0
+                    
+                    iso_w = dt_current.isocalendar()[:2]
+                    if iso_w not in acumulador_semanal:
+                        acumulador_semanal[iso_w] = 0.0
+                    
+                    horas_previas = acumulador_semanal[iso_w]
+                    is_extra = horas_previas >= 42.0
+                    
+                    acumulador_semanal[iso_w] += segment_duration
+                    
+                    is_fd = es_festivo_o_domingo(dt_current)
+                    is_night = es_nocturna(dt_current)
+                    
+                    if not is_extra:
+                        if not is_fd:
+                            if is_night:
+                                turn_rn += segment_duration
+                            else:
+                                turn_ord_diurna += segment_duration
                         else:
-                            hed = hr_ext_sem
-                else:
-                    if hr_ord_sem > 0:
-                        if h_ini_t >= time(22, 0) or h_ini_t < time(6, 0):
-                            rnf = hr_ord_sem
+                            if is_night:
+                                turn_rnf += segment_duration
+                            else:
+                                turn_hdf += segment_duration
+                    else:
+                        if not is_fd:
+                            if is_night:
+                                turn_hen += segment_duration
+                            else:
+                                turn_hed += segment_duration
                         else:
-                            hdf_val = hr_ord_sem
-                    if hr_ext_sem > 0:
-                        if h_ini_t >= time(22, 0) or h_ini_t < time(6, 0):
-                            henf = hr_ext_sem
-                        else:
-                            hedf = hr_ext_sem
+                            if is_night:
+                                turn_henf += segment_duration
+                            else:
+                                turn_hedf += segment_duration
+                                
+                    dt_current = next_dt
 
-                sub = (hr_ord_sem * val_hr) + (hed * val_hr * 1.25) + (hen * val_hr * 1.75) + \
-                      (hedf * val_hr * 2.0) + (henf * val_hr * 2.5) + \
-                      (rn * val_hr * 0.35) + (rnf * val_hr * 1.35) + (hdf_val * val_hr * 0.75)
+                sub = (turn_ord_diurna * val_hr) + \
+                      (turn_hed * val_hr * 1.25) + \
+                      (turn_hen * val_hr * 1.75) + \
+                      (turn_hedf * val_hr * 2.0) + \
+                      (turn_henf * val_hr * 2.5) + \
+                      (turn_rn * val_hr * 0.35) + \
+                      (turn_rnf * val_hr * 1.35) + \
+                      (turn_hdf * val_hr * 0.75)
                     
                 detalles.append({
                     "Entrada": r["Entrada"],
                     "Salida": r["Salida"],
-                    "Semana": int(sem),
                     "Tipo Día": r["Tipo_Dia"],
                     "Total Horas": h_tot,
-                    "HED": round(hed, 2),
-                    "HEN": round(hen, 2),
-                    "HEDF": round(hedf, 2),
-                    "HENF": round(henf, 2),
-                    "RN": round(rn, 2),
-                    "RNF": round(rnf, 2),
-                    "HDF (Fest. Hab.)": round(hdf_val, 2),
+                    "HED": round(turn_hed, 2),
+                    "HEN": round(turn_hen, 2),
+                    "HEDF": round(turn_hedf, 2),
+                    "HENF": round(turn_henf, 2),
+                    "RN": round(turn_rn, 2),
+                    "RNF": round(turn_rnf, 2),
+                    "HDF (Fest. Hab.)": round(turn_hdf, 2),
                     "Subtotal (COP)": round(sub, 2)
                 })
             
             df_res = pd.DataFrame(detalles)
             st.session_state['resultado_final'] = df_res
-            st.success("¡Liquidación semanal (límite 42h) procesada con éxito!")
+            st.success("¡Liquidación hora a hora procesada con éxito!")
             st.dataframe(df_res, use_container_width=True)
     else:
         st.info("Registra o carga turnos en la primera pestaña.")
@@ -304,7 +325,7 @@ with tab3:
         tot_pagar = df_filtrado['Subtotal (COP)'].sum()
         tot_hrs = df_filtrado['Total Horas'].sum()
         
-        st.markdown("### 📋 Consolidado de Horas y Recargos (Regla Semanal 42h)")
+        st.markdown("### 📋 Consolidado de Auditoría (Simulación Hora a Hora)")
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
             st.metric("Total Horas Trabajadas", f"{tot_hrs:.2f} h")
@@ -321,9 +342,9 @@ with tab3:
             
         csv_dl = df_filtrado.drop(columns=['Mes_Anno']).to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Descargar Consolidado Semanal ({mes_sel}) en CSV",
+            label=f"📥 Descargar Consolidado Hora a Hora ({mes_sel}) en CSV",
             data=csv_dl,
-            file_name=f"consolidado_semanal_42h_{mes_sel}.csv",
+            file_name=f"consolidado_hora_a_hora_{mes_sel}.csv",
             mime="text/csv"
         )
     else:
