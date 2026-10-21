@@ -57,9 +57,8 @@ def obtener_festivos_colombia(ano):
 st.title("⏱️ Liquidador y Memoria de Nómina - Telemando")
 st.markdown("""
 Herramienta optimizada para turnos **100% corridos**:
-* **Carga Universal de Excel/CSV:** Acepta tu formato de reporte (`Fecha Entrada`, `Hora`, `Fecha Salida`, `Hora.1`) omitiendo automáticamente los días libres en blanco.
-* **Cálculo Automático:** Detecta domingos, festivos y franja nocturna (**19:00 a 06:00**).
-* **Memoria Mensual:** Almacena el histórico y permite consultar la liquidación por cada mes específico.
+* **Carga de Plantilla Excel:** Lee automáticamente tu reporte mensual (`Fecha Entrada`, `Hora`, `Fecha Salida`, `Hora.1`) ignorando días de descanso.
+* **Consolidado Detallado de Recargos:** Calcula y consolida **RN, RNF, HDF, HNF, HN, HED, HEN, HEDF, HENF**.
 """)
 
 with st.sidebar:
@@ -70,15 +69,12 @@ with st.sidebar:
     valor_hora_ordinaria = salario_base / divisor_horas
     st.info(f"💰 **Valor Hora Ordinaria:** $ {valor_hora_ordinaria:,.2f} COP")
 
-tab1, tab2, tab3 = st.tabs(["📝 Registro y Carga de Excel", "🧮 Motor de Liquidación", "📊 Memoria y Consolidado Mensual"])
+tab1, tab2, tab3 = st.tabs(["📝 Carga de Reporte Excel", "🧮 Motor de Liquidación", "📊 Consolidado y Memoria Mensual"])
 
 with tab1:
-    st.subheader("1️⃣ Carga Masiva Mediante Plantilla Excel / CSV")
-    with st.expander("📁 Subir Archivo de Turnos"):
-        st.markdown("""
-        La aplicación lee automáticamente tu reporte mensual:
-        * Columnas requeridas: **Fecha Entrada**, **Hora**, **Fecha Salida**, **Hora.1** (los días libres en blanco se ignoran solos).
-        """)
+    st.subheader("1️⃣ Carga de Plantilla de Turnos (Excel / CSV)")
+    with st.expander("📁 Subir Archivo"):
+        st.markdown("Sube tu archivo con las columnas: **Fecha Entrada**, **Hora**, **Fecha Salida**, **Hora.1**.")
         
         archivo = st.file_uploader("Selecciona tu archivo (.xlsx o .csv)", type=["csv", "xlsx"])
         if archivo is not None:
@@ -88,12 +84,9 @@ with tab1:
                 else:
                     df_sub = pd.read_excel(archivo)
                 
-                # Normalizar nombres de columnas
                 df_sub.columns = [str(c).strip() for c in df_sub.columns]
-                
                 nuevos = []
                 
-                # Caso A: Formato del reporte del usuario
                 if 'Fecha Entrada' in df_sub.columns and 'Hora' in df_sub.columns and 'Fecha Salida' in df_sub.columns and 'Hora.1' in df_sub.columns:
                     for _, row in df_sub.iterrows():
                         if pd.isna(row['Fecha Entrada']) or pd.isna(row['Hora']) or pd.isna(row['Fecha Salida']) or pd.isna(row['Hora.1']):
@@ -123,7 +116,7 @@ with tab1:
                         duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
                         es_dom = (dt_ini.weekday() == 6)
                         es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
-                        t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
+                        t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
                         
                         nuevos.append({
                             "Entrada": str(dt_ini),
@@ -131,8 +124,6 @@ with tab1:
                             "Tipo_Dia": t_dia,
                             "Horas": round(duracion, 2)
                         })
-                        
-                # Caso B: Formato alternativo con columnas directas (Entrada, Salida)
                 elif 'Entrada' in df_sub.columns and 'Salida' in df_sub.columns:
                     for _, row in df_sub.iterrows():
                         if pd.isna(row['Entrada']) or pd.isna(row['Salida']):
@@ -143,7 +134,7 @@ with tab1:
                         
                         es_dom = (dt_ini.weekday() == 6)
                         es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
-                        t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
+                        t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
                         
                         nuevos.append({
                             "Entrada": str(dt_ini),
@@ -152,7 +143,7 @@ with tab1:
                             "Horas": round(duracion, 2)
                         })
                 else:
-                    st.error(f"Columnas encontradas: {list(df_sub.columns)}. El archivo debe tener ('Fecha Entrada', 'Hora', 'Fecha Salida', 'Hora.1') o ('Entrada', 'Salida').")
+                    st.error("El archivo no tiene las columnas esperadas.")
                 
                 if nuevos:
                     df_n = pd.DataFrame(nuevos)
@@ -160,13 +151,13 @@ with tab1:
                         st.session_state['mis_turnos'] = pd.concat([st.session_state['mis_turnos'], df_n], ignore_index=True)
                     else:
                         st.session_state['mis_turnos'] = df_n
-                    st.success(f"¡Se cargaron {len(nuevos)} turnos exitosamente desde tu archivo Excel!")
+                    st.success(f"¡Se cargaron {len(nuevos)} turnos exitosamente!")
             except Exception as e:
-                st.error(f"Error al procesar el archivo. Detalle: {e}")
+                st.error(f"Error al procesar el archivo: {e}")
 
     st.markdown("---")
-    st.subheader("2️⃣ Registro Manual Directo (Turnos Corridos)")
-    with st.form("form_manual_limpio", clear_on_submit=True):
+    st.subheader("2️⃣ Registro Manual de Turno")
+    with st.form("form_manual", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             f_in = st.date_input("Fecha Entrada", value=datetime.today())
@@ -175,19 +166,17 @@ with tab1:
             f_out = st.date_input("Fecha Salida", value=datetime.today())
             h_out = st.time_input("Hora Salida", value=time(14, 0))
             
-        btn_add = st.form_submit_button("➕ Agregar Turno a la Memoria")
-        
+        btn_add = st.form_submit_button("➕ Agregar Turno")
         if btn_add:
             dt_ini = datetime.combine(f_in, h_in)
             dt_fin = datetime.combine(f_out, h_out)
-            
             if dt_fin <= dt_ini:
-                st.error("Error: La fecha y hora de salida deben ser posteriores a la entrada.")
+                st.error("La salida debe ser posterior a la entrada.")
             else:
                 duracion = (dt_fin - dt_ini).seconds / 3600.0 + ((dt_fin - dt_ini).days * 24)
                 es_dom = (f_in.weekday() == 6)
                 es_fes = (f_in in obtener_festivos_colombia(f_in.year))
-                t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
+                t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
                 
                 item = pd.DataFrame({
                     "Entrada": [str(dt_ini)],
@@ -195,46 +184,69 @@ with tab1:
                     "Tipo_Dia": [t_dia],
                     "Horas": [round(duracion, 2)]
                 })
-                
                 if 'mis_turnos' in st.session_state:
                     st.session_state['mis_turnos'] = pd.concat([st.session_state['mis_turnos'], item], ignore_index=True)
                 else:
                     st.session_state['mis_turnos'] = item
-                st.success(f"¡Turno guardado! Duración: **{round(duracion, 2)} h** ({t_dia})")
+                st.success(f"¡Turno guardado ({round(duracion, 2)} h)!")
 
     if 'mis_turnos' in st.session_state and not st.session_state['mis_turnos'].empty:
         st.write("### 📋 Historial de Turnos en Memoria:")
         st.dataframe(st.session_state['mis_turnos'], use_container_width=True)
-        if st.button("🗑️ Borrar Toda la Memoria"):
+        if st.button("🗑️ Borrar Historial"):
             del st.session_state['mis_turnos']
             if 'resultado_final' in st.session_state:
                 del st.session_state['resultado_final']
             st.rerun()
 
 with tab2:
-    st.subheader("🧮 Motor de Liquidación Automática")
+    st.subheader("🧮 Motor de Liquidación y Desglose de Recargos")
     if 'mis_turnos' in st.session_state and not st.session_state['mis_turnos'].empty:
-        if st.button("🚀 Procesar Liquidación de Turnos", type="primary"):
+        if st.button("🚀 Procesar Liquidación Completa", type="primary"):
             val_hr = valor_hora_ordinaria
             detalles = []
             
             for _, r in st.session_state['mis_turnos'].iterrows():
+                dt_ini = datetime.strptime(str(r["Entrada"]), "%Y-%m-%d %H:%M:%S")
+                dt_fin = datetime.strptime(str(r["Salida"]), "%Y-%m-%d %H:%M:%S")
                 h_tot = r["Horas"]
-                es_fd = r["Tipo_Dia"] in ["Domingo", "Festivo"]
+                es_fd = r["Tipo_Dia"] == "Domingo/Festivo"
                 
                 hr_ord = min(h_tot, 8.0)
                 hr_ext = max(0.0, h_tot - 8.0)
+                h_ini_t = dt_ini.time()
                 
-                h_ini_t = datetime.strptime(str(r["Entrada"]), "%Y-%m-%d %H:%M:%S").time()
-                rec_noc = 0.0
-                if h_ini_t >= time(14, 0) and h_ini_t < time(18, 0):
-                    rec_noc = min(3.0, h_tot)
-                elif h_ini_t >= time(21, 0) or h_ini_t < time(6, 0):
-                    rec_noc = min(h_tot, 8.0)
-                elif h_ini_t >= time(18, 0) and h_ini_t <= time(20, 0):
-                    rec_noc = min(11.0, h_tot)
+                rn, rnf, hdf, hnf, hn, hed, hen, hedf, henf = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                 
-                sub = (hr_ord * val_hr) + (rec_noc * val_hr * 0.35) + (hr_ext * val_hr * (1.75 if es_fd else 1.25))
+                if not es_fd:
+                    if h_ini_t >= time(14, 0) and h_ini_t < time(18, 0):
+                        rn = min(3.0, h_tot)
+                    elif h_ini_t >= time(21, 0) or h_ini_t < time(6, 0):
+                        rn = min(h_tot, 8.0)
+                    elif h_ini_t >= time(18, 0) and h_ini_t <= time(20, 0):
+                        rn = min(11.0, h_tot)
+                    
+                    if hr_ext > 0:
+                        if h_ini_t >= time(21, 0) or h_ini_t < time(6, 0):
+                            hen = hr_ext
+                        else:
+                            hed = hr_ext
+                else:
+                    if h_ini_t >= time(21, 0) or h_ini_t < time(6, 0):
+                        rnf = min(h_tot, 8.0)
+                        hnf = min(h_tot, 8.0)
+                    else:
+                        hdf = min(hr_ord, 8.0)
+                    
+                    if hr_ext > 0:
+                        if h_ini_t >= time(21, 0) or h_ini_t < time(6, 0):
+                            henf = hr_ext
+                        else:
+                            hedf = hr_ext
+
+                sub = (hr_ord * val_hr) + (rn * val_hr * 0.35) + (rnf * val_hr * 1.35) + \
+                      (hed * val_hr * 1.25) + (hen * val_hr * 1.75) + \
+                      (hedf * val_hr * 2.0) + (henf * val_hr * 2.5)
                 if es_fd and hr_ord > 0:
                     sub += hr_ord * val_hr * 0.75
                     
@@ -243,49 +255,73 @@ with tab2:
                     "Salida": r["Salida"],
                     "Tipo Día": r["Tipo_Dia"],
                     "Total Horas": h_tot,
-                    "Ordinarias": hr_ord,
-                    "Extras": hr_ext,
-                    "Rec. Nocturno": round(rec_noc, 2),
+                    "RN": round(rn, 2),
+                    "RNF": round(rnf, 2),
+                    "HDF": round(hdf, 2),
+                    "HNF": round(hnf, 2),
+                    "HN": round(hn, 2),
+                    "HED": round(hed, 2),
+                    "HEN": round(hen, 2),
+                    "HEDF": round(hedf, 2),
+                    "HENF": round(henf, 2),
                     "Subtotal (COP)": round(sub, 2)
                 })
             
             df_res = pd.DataFrame(detalles)
             st.session_state['resultado_final'] = df_res
-            st.success("¡Liquidación procesada con éxito!")
+            st.success("¡Liquidación y desglose de recargos procesados!")
             st.dataframe(df_res, use_container_width=True)
     else:
-        st.info("Registra o carga turnos en la primera pestaña para poder calcular.")
+        st.info("Registra o carga turnos en la primera pestaña.")
 
 with tab3:
-    st.subheader("📊 Memoria y Consulta por Mes Específico")
+    st.subheader("📊 Consolidado General de Recargos y Memoria Mensual")
     if 'resultado_final' in st.session_state and not st.session_state['resultado_final'].empty:
         df_f = st.session_state['resultado_final']
-        
         df_f['Mes_Anno'] = pd.to_datetime(df_f['Entrada']).dt.to_period('M').astype(str)
         meses_disp = sorted(df_f['Mes_Anno'].unique())
         
         mes_sel = st.selectbox("Selecciona el Periodo (Mes/Año) a Consultar", meses_disp)
-        
         df_filtrado = df_f[df_f['Mes_Anno'] == mes_sel]
         
-        st.write(f"### Detalle de Nómina para el Periodo: {mes_sel}")
+        st.write(f"### Detalle para el Periodo: {mes_sel}")
         st.dataframe(df_filtrado.drop(columns=['Mes_Anno']), use_container_width=True)
         
-        t_pagar = df_filtrado['Subtotal (COP)'].sum()
-        t_hrs = df_filtrado['Total Horas'].sum()
+        tot_rn = df_filtrado['RN'].sum()
+        tot_rnf = df_filtrado['RNF'].sum()
+        tot_hdf = df_filtrado['HDF'].sum()
+        tot_hnf = df_filtrado['HNF'].sum()
+        tot_hn = df_filtrado['HN'].sum()
+        tot_hed = df_filtrado['HED'].sum()
+        tot_hen = df_filtrado['HEN'].sum()
+        tot_hedf = df_filtrado['HEDF'].sum()
+        tot_henf = df_filtrado['HENF'].sum()
+        tot_pagar = df_filtrado['Subtotal (COP)'].sum()
+        tot_hrs = df_filtrado['Total Horas'].sum()
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total Horas Trabajadas", f"{t_hrs:.2f} h")
-        with col2:
-            st.metric(f"Devengado Estimado ({mes_sel})", f"$ {t_pagar:,.2f} COP")
+        st.markdown("### 📋 Consolidado de Recargos y Horas del Mes")
+        col_c1, col_c2, col_c3 = st.columns(3)
+        with col_c1:
+            st.metric("Total Horas Trabajadas", f"{tot_hrs:.2f} h")
+            st.metric("RN (Recargo Nocturno)", f"{tot_rn:.2f} h")
+            st.metric("RNF (Rec. Noct. Festivo)", f"{tot_rnf:.2f} h")
+            st.metric("HDF (Diurnas Festivas)", f"{tot_hdf:.2f} h")
+        with col_c2:
+            st.metric("HNF (Nocturnas Festivas)", f"{tot_hnf:.2f} h")
+            st.metric("HN (Horas Nocturnas)", f"{tot_hn:.2f} h")
+            st.metric("HED (Extras Diurnas)", f"{tot_hed:.2f} h")
+            st.metric("HEN (Extras Nocturnas)", f"{tot_hen:.2f} h")
+        with col_c3:
+            st.metric("HEDF (Extras Diur. Fest.)", f"{tot_hedf:.2f} h")
+            st.metric("HENF (Extras Noct. Fest.)", f"{tot_henf:.2f} h")
+            st.metric(f"💰 Devengado ({mes_sel})", f"$ {tot_pagar:,.2f} COP")
             
         csv_dl = df_filtrado.drop(columns=['Mes_Anno']).to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Descargar Reporte del Mes ({mes_sel}) en CSV",
+            label=f"📥 Descargar Consolidado del Mes ({mes_sel}) en CSV",
             data=csv_dl,
-            file_name=f"nomina_telemando_{mes_sel}.csv",
+            file_name=f"consolidado_recargos_{mes_sel}.csv",
             mime="text/csv"
         )
     else:
-        st.info("Ejecuta la liquidación en la segunda pestaña para activar la memoria y los filtros mensuales.")
+        st.info("Procesa la liquidación en la segunda pestaña para ver el consolidado mensual.")
