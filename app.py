@@ -57,9 +57,9 @@ def obtener_festivos_colombia(ano):
 st.title("⏱️ Liquidador y Memoria de Nómina - Telemando")
 st.markdown("""
 Herramienta optimizada para turnos **100% corridos**:
-* **Registro Flexible:** Ingresa directamente la Fecha y Hora de Entrada y Salida, o sube tu plantilla Excel/CSV.
+* **Carga de Excel:** Compatible con tu plantilla (`Fecha Entrada`, `Hora`, `Fecha Salida`, `Hora.1`) omitiendo automáticamente días libres.
 * **Cálculo Automático:** Detecta domingos, festivos y franja nocturna (**19:00 a 06:00**).
-* **Memoria Mensual:** Almacena el histórico y te permite consultar y filtrar la liquidación por cada mes específico.
+* **Memoria Mensual:** Almacena el histórico y permite consultar la liquidación por cada mes específico.
 """)
 
 with st.sidebar:
@@ -73,18 +73,25 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📝 Registro y Carga de Excel", "🧮 Motor de Liquidación", "📊 Memoria y Consolidado Mensual"])
 
 with tab1:
-    st.subheader("1️⃣ Carga Masiva Mediante Plantilla Excel / CSV")
+    st.subheader("1️⃣ Carga Masiva Mediante Plantilla Excel")
     with st.expander("📁 Subir Archivo de Turnos"):
-        st.markdown("El archivo debe contener dos columnas exactas: **Entrada** y **Salida** (Ej: `2026-10-01 06:00:00`).")
+        st.markdown("""
+        Sube tu archivo con el formato exacto de tu reporte:
+        * Columnas: **Fecha Entrada**, **Hora**, **Fecha Salida**, **Hora.1** (los días en blanco se omiten solos).
+        """)
         
+        # Plantilla descargable de ejemplo
         df_ejemplo = pd.DataFrame({
-            "Entrada": ["2026-10-01 06:00:00", "2026-10-02 14:00:00", "2026-10-03 22:00:00"],
-            "Salida": ["2026-10-01 14:00:00", "2026-10-02 22:00:00", "2026-10-04 06:00:00"]
+            "Fecha": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "Fecha Entrada": ["2026-08-01", "2026-08-02", "2026-08-03"],
+            "Hora": ["22:00:00", "22:00:00", "22:00:00"],
+            "Fecha Salida": ["2026-08-02", "2026-08-03", "2026-08-04"],
+            "Hora.1": ["06:00:00", "06:00:00", "06:00:00"]
         })
         st.download_button(
             label="📥 Descargar Plantilla de Ejemplo",
             data=df_ejemplo.to_csv(index=False).encode('utf-8'),
-            file_name="plantilla_turnos_telemando.csv",
+            file_name="plantilla_reporte_nomina.csv",
             mime="text/csv"
         )
         
@@ -97,30 +104,72 @@ with tab1:
                     df_sub = pd.read_excel(archivo)
                 
                 nuevos = []
-                for _, row in df_sub.iterrows():
-                    dt_ini = pd.to_datetime(row["Entrada"])
-                    dt_fin = pd.to_datetime(row["Salida"])
-                    duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
-                    
-                    es_dom = (dt_ini.weekday() == 6)
-                    es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
-                    t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
-                    
-                    nuevos.append({
-                        "Entrada": str(dt_ini),
-                        "Salida": str(dt_fin),
-                        "Tipo_Dia": t_dia,
-                        "Horas": round(duracion, 2)
-                    })
-                
-                df_n = pd.DataFrame(nuevos)
-                if 'mis_turnos' in st.session_state:
-                    st.session_state['mis_turnos'] = pd.concat([st.session_state['mis_turnos'], df_n], ignore_index=True)
+                if 'Fecha Entrada' in df_sub.columns and 'Hora' in df_sub.columns and 'Fecha Salida' in df_sub.columns and 'Hora.1' in df_sub.columns:
+                    for _, row in df_sub.iterrows():
+                        if pd.isna(row['Fecha Entrada']) or pd.isna(row['Hora']) or pd.isna(row['Fecha Salida']) or pd.isna(row['Hora.1']):
+                            continue
+                        
+                        f_in = pd.to_datetime(row['Fecha Entrada']).date()
+                        h_in = row['Hora']
+                        if isinstance(h_in, str):
+                            t_in = datetime.strptime(h_in, '%H:%M:%S').time() if len(h_in) == 8 else datetime.strptime(h_in, '%H:%M').time()
+                        elif hasattr(h_in, 'hour'):
+                            t_in = h_in
+                        else:
+                            t_in = (datetime.min + pd.to_timedelta(h_in)).time()
+                            
+                        f_out = pd.to_datetime(row['Fecha Salida']).date()
+                        h_out = row['Hora.1']
+                        if isinstance(h_out, str):
+                            t_out = datetime.strptime(h_out, '%H:%M:%S').time() if len(h_out) == 8 else datetime.strptime(h_out, '%H:%M').time()
+                        elif hasattr(h_out, 'hour'):
+                            t_out = h_out
+                        else:
+                            t_out = (datetime.min + pd.to_timedelta(h_out)).time()
+                            
+                        dt_ini = datetime.combine(f_in, t_in)
+                        dt_fin = datetime.combine(f_out, t_out)
+                        
+                        duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
+                        es_dom = (dt_ini.weekday() == 6)
+                        es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
+                        t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
+                        
+                        nuevos.append({
+                            "Entrada": str(dt_ini),
+                            "Salida": str(dt_fin),
+                            "Tipo_Dia": t_dia,
+                            "Horas": round(duracion, 2)
+                        })
+                elif 'Entrada' in df_sub.columns and 'Salida' in df_sub.columns:
+                    for _, row in df_sub.iterrows():
+                        dt_ini = pd.to_datetime(row["Entrada"])
+                        dt_fin = pd.to_datetime(row["Salida"])
+                        duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
+                        
+                        es_dom = (dt_ini.weekday() == 6)
+                        es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
+                        t_dia = "Domingo" if es_dom else ("Festivo" if es_fes else "Día Hábil")
+                        
+                        nuevos.append({
+                            "Entrada": str(dt_ini),
+                            "Salida": str(dt_fin),
+                            "Tipo_Dia": t_dia,
+                            "Horas": round(duracion, 2)
+                        })
                 else:
-                    st.session_state['mis_turnos'] = df_n
-                st.success("¡Turnos cargados y guardados en memoria exitosamente desde el archivo!")
+                    st.error("El archivo no contiene las columnas reconocidas ('Fecha Entrada', 'Hora', 'Fecha Salida', 'Hora.1').")
+                    nuevos = []
+                
+                if nuevos:
+                    df_n = pd.DataFrame(nuevos)
+                    if 'mis_turnos' in st.session_state:
+                        st.session_state['mis_turnos'] = pd.concat([st.session_state['mis_turnos'], df_n], ignore_index=True)
+                    else:
+                        st.session_state['mis_turnos'] = df_n
+                    st.success(f"¡Se cargaron {len(nuevos)} turnos exitosamente desde tu plantilla!")
             except Exception as e:
-                st.error(f"Error al procesar el archivo. Revisa que las columnas sean 'Entrada' y 'Salida'. Detalle: {e}")
+                st.error(f"Error al procesar el archivo. Detalle: {e}")
 
     st.markdown("---")
     st.subheader("2️⃣ Registro Manual Directo (Turnos Corridos)")
