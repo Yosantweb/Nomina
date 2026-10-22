@@ -54,11 +54,11 @@ def obtener_festivos_colombia(ano):
     festivos.add(siguiente_lunes(domingo_pascua + timedelta(days=71)))
     return festivos
 
-st.title("⏱️ Liquidador y Memoria de Nómina - Telemando (Auditoría Hora a Hora)")
+st.title("⏱️ Liquidador y Memoria de Nómina - Telemando (Aguas de Cartagena)")
 st.markdown("""
-Herramienta con **Simulación Hora a Hora y Límite Semanal de 42 Horas**:
-* **Carga de Plantilla Excel:** Lee automáticamente tu reporte mensual (`Fecha Entrada`, `Hora`, `Fecha Salida`, `Hora.1`) reemplazando el historial.
-* **Motor de Desglose Exacto:** Evalúa cada hora del turno en su franja precisa (Nocturna 19:00 a 06:00, Dominical/Festiva) y aplica el límite semanal para HED, HEN, HEDF, HENF, RN, RNF y HDF.
+Herramienta oficial con **Soporte para Plantilla RRHH y Simulación Hora a Hora (Límite 42h)**:
+* **Carga de Plantilla Oficial o CSV:** Lee tanto tu formato estándar como la **Plantilla Oficial de Aguas de Cartagena** (hoja `REGISTRO` con bloques de turnos).
+* **Auditoría Exacta:** Evalúa cada hora en su franja precisa (Nocturna 19:00 a 06:00, Domingos y Festivos) aplicando la acumulación semanal de 42 horas.
 """)
 
 with st.sidebar:
@@ -69,73 +69,29 @@ with st.sidebar:
     valor_hora_ordinaria = salario_base / divisor_horas
     st.info(f"💰 **Valor Hora Ordinaria:** $ {valor_hora_ordinaria:,.2f} COP")
 
-tab1, tab2, tab3 = st.tabs(["📝 Carga de Reporte Excel", "🧮 Motor de Liquidación Hora a Hora", "📊 Consolidado y Memoria Mensual"])
+tab1, tab2, tab3 = st.tabs(["📝 Carga de Reporte / Plantilla Oficial", "🧮 Motor de Liquidación Hora a Hora", "📊 Consolidado y Memoria Mensual"])
 
 with tab1:
-    st.subheader("1️⃣ Carga de Plantilla de Turnos (Excel / CSV)")
+    st.subheader("1️⃣ Carga de Plantilla de Turnos (Excel Aguas de Cartagena o CSV)")
     with st.expander("📁 Subir Archivo"):
-        st.markdown("Sube tu archivo con las columnas: **Fecha Entrada**, **Hora**, **Fecha Salida**, **Hora.1**.")
+        st.markdown("Sube tu **Plantilla Oficial de Aguas de Cartagena** (p.ej., `WILMER PARDO - SEPTIEMBRE 2026.xlsx`) o tu archivo CSV/Excel tradicional.")
         
         archivo = st.file_uploader("Selecciona tu archivo (.xlsx o .csv)", type=["csv", "xlsx"])
         if archivo is not None:
             try:
+                nuevos = []
                 if archivo.name.endswith('.csv'):
                     df_sub = pd.read_csv(archivo)
-                else:
-                    df_sub = pd.read_excel(archivo)
-                
-                df_sub.columns = [str(c).strip() for c in df_sub.columns]
-                nuevos = []
-                
-                if 'Fecha Entrada' in df_sub.columns and 'Hora' in df_sub.columns and 'Fecha Salida' in df_sub.columns and 'Hora.1' in df_sub.columns:
+                    df_sub.columns = [str(c).strip() for c in df_sub.columns]
                     for _, row in df_sub.iterrows():
-                        if pd.isna(row['Fecha Entrada']) or pd.isna(row['Hora']) or pd.isna(row['Fecha Salida']) or pd.isna(row['Hora.1']):
-                            continue
-                        
-                        f_in = pd.to_datetime(row['Fecha Entrada']).date()
-                        h_in = row['Hora']
-                        if isinstance(h_in, str):
-                            t_in = datetime.strptime(h_in, '%H:%M:%S').time() if len(h_in) >= 5 else time(0, 0)
-                        elif hasattr(h_in, 'hour'):
-                            t_in = h_in
-                        else:
-                            t_in = (datetime.min + pd.to_timedelta(h_in)).time()
-                            
-                        f_out = pd.to_datetime(row['Fecha Salida']).date()
-                        h_out = row['Hora.1']
-                        if isinstance(h_out, str):
-                            t_out = datetime.strptime(h_out, '%H:%M:%S').time() if len(h_out) >= 5 else time(0, 0)
-                        elif hasattr(h_out, 'hour'):
-                            t_out = h_out
-                        else:
-                            t_out = (datetime.min + pd.to_timedelta(h_out)).time()
-                            
-                        dt_ini = datetime.combine(f_in, t_in)
-                        dt_fin = datetime.combine(f_out, t_out)
-                        
-                        duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
-                        es_dom = (dt_ini.weekday() == 6)
-                        es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
-                        t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
-                        
-                        nuevos.append({
-                            "Entrada": str(dt_ini),
-                            "Salida": str(dt_fin),
-                            "Tipo_Dia": t_dia,
-                            "Horas": round(duracion, 2)
-                        })
-                elif 'Entrada' in df_sub.columns and 'Salida' in df_sub.columns:
-                    for _, row in df_sub.iterrows():
-                        if pd.isna(row['Entrada']) or pd.isna(row['Salida']):
+                        if pd.isna(row.get('Entrada')) or pd.isna(row.get('Salida')):
                             continue
                         dt_ini = pd.to_datetime(row["Entrada"])
                         dt_fin = pd.to_datetime(row["Salida"])
                         duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
-                        
                         es_dom = (dt_ini.weekday() == 6)
                         es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
                         t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
-                        
                         nuevos.append({
                             "Entrada": str(dt_ini),
                             "Salida": str(dt_fin),
@@ -143,12 +99,99 @@ with tab1:
                             "Horas": round(duracion, 2)
                         })
                 else:
-                    st.error("El archivo no tiene las columnas esperadas.")
+                    xls = pd.ExcelFile(archivo)
+                    if 'REGISTRO' in xls.sheet_names:
+                        df_reg = pd.read_excel(archivo, sheet_name='REGISTRO')
+                        for idx in range(10, len(df_reg)):
+                            row_vals = df_reg.iloc[idx].values
+                            fec_val = row_vals[0]
+                            if pd.isna(fec_val):
+                                continue
+                            try:
+                                f_date = pd.to_datetime(fec_val).date()
+                            except:
+                                continue
+                            
+                            for col_ent, col_sal in [(1, 2), (3, 4), (5, 6)]:
+                                if col_ent >= len(row_vals) or col_sal >= len(row_vals):
+                                    continue
+                                ent = row_vals[col_ent]
+                                sal = row_vals[col_sal]
+                                if pd.isna(ent) or pd.isna(sal):
+                                    continue
+                                try:
+                                    h_ent = float(ent)
+                                    h_sal = float(sal)
+                                except:
+                                    continue
+                                
+                                dt_start = datetime.combine(f_date, time(int(h_ent % 24), 0))
+                                days_add = 0
+                                if h_sal < h_ent:
+                                    days_add = 1
+                                elif h_sal == 24:
+                                    h_sal = 0
+                                    days_add = 1
+                                    
+                                dt_end = datetime.combine(f_date + timedelta(days=days_add), time(int(h_sal % 24), 0))
+                                duracion = (dt_end - dt_start).total_seconds() / 3600.0
+                                if duracion <= 0:
+                                    continue
+                                
+                                es_dom = (dt_start.weekday() == 6)
+                                es_fes = (dt_start.date() in obtener_festivos_colombia(dt_start.year))
+                                t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
+                                
+                                nuevos.append({
+                                    "Entrada": str(dt_start),
+                                    "Salida": str(dt_end),
+                                    "Tipo_Dia": t_dia,
+                                    "Horas": round(duracion, 2)
+                                })
+                    else:
+                        df_sub = pd.read_excel(archivo)
+                        df_sub.columns = [str(c).strip() for c in df_sub.columns]
+                        if 'Fecha Entrada' in df_sub.columns and 'Hora' in df_sub.columns and 'Fecha Salida' in df_sub.columns and 'Hora.1' in df_sub.columns:
+                            for _, row in df_sub.iterrows():
+                                if pd.isna(row['Fecha Entrada']) or pd.isna(row['Hora']) or pd.isna(row['Fecha Salida']) or pd.isna(row['Hora.1']):
+                                    continue
+                                f_in = pd.to_datetime(row['Fecha Entrada']).date()
+                                h_in = row['Hora']
+                                if isinstance(h_in, str):
+                                    t_in = datetime.strptime(h_in, '%H:%M:%S').time() if len(h_in) >= 5 else time(0, 0)
+                                elif hasattr(h_in, 'hour'):
+                                    t_in = h_in
+                                else:
+                                    t_in = (datetime.min + pd.to_timedelta(h_in)).time()
+                                    
+                                f_out = pd.to_datetime(row['Fecha Salida']).date()
+                                h_out = row['Hora.1']
+                                if isinstance(h_out, str):
+                                    t_out = datetime.strptime(h_out, '%H:%M:%S').time() if len(h_out) >= 5 else time(0, 0)
+                                elif hasattr(h_out, 'hour'):
+                                    t_out = h_out
+                                else:
+                                    t_out = (datetime.min + pd.to_timedelta(h_out)).time()
+                                    
+                                dt_ini = datetime.combine(f_in, t_in)
+                                dt_fin = datetime.combine(f_out, t_out)
+                                duracion = (dt_fin - dt_ini).total_seconds() / 3600.0
+                                es_dom = (dt_ini.weekday() == 6)
+                                es_fes = (dt_ini.date() in obtener_festivos_colombia(dt_ini.year))
+                                t_dia = "Domingo/Festivo" if (es_dom or es_fes) else "Día Hábil"
+                                nuevos.append({
+                                    "Entrada": str(dt_ini),
+                                    "Salida": str(dt_fin),
+                                    "Tipo_Dia": t_dia,
+                                    "Horas": round(duracion, 2)
+                                })
                 
                 if nuevos:
                     df_n = pd.DataFrame(nuevos)
                     st.session_state['mis_turnos'] = df_n
-                    st.success(f"¡Se cargaron {len(nuevos)} turnos exitosamente! Historial actualizado.")
+                    st.success(f"¡Plantilla oficial procesada con éxito! Se cargaron {len(nuevos)} segmentos de turnos.")
+                else:
+                    st.warning("No se encontraron turnos válidos en el archivo.")
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {e}")
 
